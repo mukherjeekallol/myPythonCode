@@ -22,7 +22,7 @@ def flattenDict(prefix,input_d):
         flat_key = prefix + key
         print(type(val))
         if type(val)==dict:
-            output_d.update(flattenDict(flat_key+"_",val))
+            output_d.update(flattenDict(flat_key+".",val))
         else:
             output_d[flat_key] = val
 

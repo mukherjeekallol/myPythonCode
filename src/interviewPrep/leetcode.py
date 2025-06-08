@@ -1,27 +1,150 @@
-from typing import List
-nums =[8860,-853,6534,4477,-4589,8646,-6155,-5577,-1656,-5779,-2619,-8604,-1358,-8009,4983,7063,3104,-1560,4080,2763,
-       5616,-2375,2848,1394,-7173,-5225,-8244,-809,8025,-4072,-4391,-9579,1407,6700,2421,-6685,5481,-1732,-8892,-6645,
-       3077,3287,-4149,8701,-4393,-9070,-1777,2237,-3253,-506,-4931,-7366,-8132,5406,-6300,-275,-1908,67,3569,1433,-7262,-437,8303,4498,-379,3054,-6285,4203,6908,4433,3077,2288,9733,
-       -8067,3007,9725,9669,1362,-2561,-4225,5442,-9006,-429,160,-9234,-4444,3586,-5711,-9506,-79,-4418,-4348,-5891]
-k=93
-print(len(nums))
+# from collections import OrderedDict
+
+# class LRU:
+#     def __init__(self,capacity):
+#         self.capacity = capacity
+#         self.len = 0
+#         self.cache = OrderedDict()
+
+    
+#     def get(self,key):
+#         if key in self.cache:
+#             self.cache.move_to_end(key)
+#             return self.cache[key]
+#         return -1
+    
+#     def put(self,key,value):
+#         if key in self.cache:
+#             self.cache.move_to_end(key)
+#         self.cache[key]=value
+
+#         if self.len==self.capacity:
+#             self.cache.popitem(last=False)
+       
+
+# lru = LRU(3)
+# lru.put(1, "A")
+# lru.put(2, "B")
+# lru.put(3, "C")
+
+# print(lru.get(1))
 
 
-def findMaxAverage(nums: List[int], k: int) -> float:
-    """This function takes a list of integers and an integer k as input and returns the maximum average of a subarray of length k.
-    The time complexity of this function is O(n) where n is the length of the list.
-    The space complexity of this function is O(1) as it only uses a constant amount of space to store the variables.
-    """
-    if len(nums)==1 and k==1:
-        return nums[0]
-    max_s = 0
-    s=sum(nums[:k])
-    for i in range(k,len(nums)):
-        s= s + nums[i] - nums[i-k-1]
-        if s>max_s or (s<0 and max_s==0):
-            max_s=s
-    if s>max_s or (s<0 and max_s==0):
-            max_s=s
-    return max_s/k
+# def flatDict(d,pref):
+#     flat_d={}
+#     for key in d:
+#         val = d[key]
+#         new_key=pref + key
+#         if type(val)==dict:
+#             flat_d.update(flatDict(val,new_key+"."))
+#         else:            
+#             flat_d[new_key]=val
+#     return flat_d
 
-print(findMaxAverage(nums, k))
+
+# d1 = {
+#     'k1':'v1',
+#     'k2':'v2',
+#     'k3':{
+#         'k31':'v31',
+#         'k32':'v32'
+#     }
+# }
+
+# fd = flatDict(d1,'')
+
+# print(fd)
+
+
+# def flat(input):
+#     flatList=[]
+#     for item in input:
+#         if type(item)==list:
+#             flatList.extend(flat(item))
+#         else:
+#             flatList.append(item)
+#     return flatList
+
+# l = [1,2,3,[45,46,[123,980],12,[123,32]]]
+
+# fl = flat(l)
+
+# print(fl)
+
+from confluent_kafka import avro
+from confluent_kafka.avro import AvroProducer
+import csv
+
+value_schema_str = """
+{
+   "type": "record",
+   "name": "myrecord",
+   "fields": [
+     {
+       "name": "name",
+       "type": "string"
+     },
+     {
+       "name": "favorite_color",
+       "type": ["string", "null"]
+     },
+     {
+       "name": "favorite_number",
+       "type": ["int", "null"]
+     }
+   ]
+}
+"""
+
+value_schema = avro.loads(value_schema_str)
+
+avro_producer = AvroProducer({
+    'bootstrap.servers': 'localhost:9092',
+    'schema.registry.url': 'http://localhost:8081'
+    }, default_value_schema=value_schema)
+
+from google.cloud import bigquery
+
+client = bigquery.Client()
+query = "SELECT * FROM `your_project.your_dataset.your_table`"
+query_job = client.query(query)
+rows = query_job.result()
+
+for row in rows:
+    avro_producer.produce(topic='my_topic', value=dict(row))
+    avro_producer.flush()
+
+from confluent_kafka import Consumer, KafkaError, SerializingProducer
+from confluent_kafka.serialization import StringDeserializer
+from confluent_kafka.avro import AvroDeserializer
+from confluent_kafka.avro.serializer import SerializerError
+
+settings = {
+    'bootstrap.servers': 'localhost:9092',
+    'group.id': 'mygroup',
+    'client.id': 'client-1',
+    'key.deserializer': StringDeserializer('utf_8'),
+    'value.deserializer': AvroDeserializer(value_schema_str),
+    'enable.auto.commit': True,
+    'session.timeout.ms': 6000,
+    'default.topic.config': {'auto.offset.reset': 'smallest'}
+}
+
+c = Consumer(settings)
+
+c.subscribe(['my_topic'])
+
+with open('output.txt','w') as f:
+    while True:
+        msg = c.poll(0.1)
+        if msg is None:
+            continue
+        elif not msg.error():
+            f.write('{}\n'.format(msg.value().get('name')))
+        elif msg.error().code() == KafkaError._PARTITION_EOF:
+            print('End of partition reached {0}/{1}'
+                  .format(msg.topic(), msg.partition()))
+        else:
+            print('Error occured: {0}'.format(msg.error().str()))
+
+c.close()
